@@ -3,10 +3,12 @@ import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { TokenListProvider, TokenInfo } from '@solana/spl-token-registry';
 
 function App() {
     const { publicKey } = useWallet();
     const [tokens, setTokens] = useState([]);
+    const [availableTokens, setAvailableTokens] = useState([]); // All available tokens for the "To" field
     const [loading, setLoading] = useState(false);
     const [fromToken, setFromToken] = useState('');
     const [toToken, setToToken] = useState('');
@@ -57,40 +59,27 @@ function App() {
         }
     }, [publicKey]);
 
+    // Fetch the full list of tokens for the "To" field
     useEffect(() => {
-        const fetchSwapQuote = async () => {
-            if (fromToken && toToken && swapAmount) {
-                try {
-                    const inputAmount = fromToken === 'SOL' ? swapAmount * LAMPORTS_PER_SOL : swapAmount;
+        const fetchTokenList = async () => {
+            const tokenListProvider = new TokenListProvider();
+            const tokenList = await tokenListProvider.resolve();
+            const tokens = tokenList.filterByClusterSlug('devnet').getList(); // Adjust cluster as needed
 
-                    const response = await fetch(`https://quote-api.jup.ag/v1/quote?inputMint=${fromToken}&outputMint=${toToken}&amount=${inputAmount}&slippageBps=50`);
-                    const data = await response.json();
-
-                    if (data && data.data && data.data[0]) {
-                        const quote = data.data[0];
-                        setExpectedOutput(quote.outAmount / LAMPORTS_PER_SOL); // Convert back to SOL or token unit
-                        setFees(quote.feeAmount / LAMPORTS_PER_SOL); // Estimate fees
-                    } else {
-                        setExpectedOutput(null);
-                        setFees(null);
-                    }
-                } catch (error) {
-                    console.error('Error fetching swap quote:', error);
-                    setExpectedOutput(null);
-                    setFees(null);
-                }
-            }
+            setAvailableTokens(tokens);
         };
 
-        fetchSwapQuote();
-    }, [fromToken, toToken, swapAmount]);
+        fetchTokenList();
+    }, []);
 
     const handleSwap = () => {
         console.log(`Swapping ${swapAmount} of ${fromToken} to ${toToken}`);
         // Placeholder for the swap logic
     };
 
-    const filteredToTokens = tokens.filter((token) => token.address !== fromToken);
+    const filteredToTokens = availableTokens.filter(
+        (token) => token.address !== fromToken
+    );
 
     return (
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", flexDirection: "column" }}>
@@ -119,7 +108,7 @@ function App() {
                                     <option value="" disabled>Select a token</option>
                                     {filteredToTokens.map((token, index) => (
                                         <option key={index} value={token.address}>
-                                            {token.address} - Balance: {token.balance}
+                                            {token.symbol} ({token.name})
                                         </option>
                                     ))}
                                 </select>
