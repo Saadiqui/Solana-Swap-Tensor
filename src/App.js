@@ -19,6 +19,9 @@ function App() {
     const [expectedOutput, setExpectedOutput] = useState('');
     const [fees, setFees] = useState(null);
     const [error, setError] = useState('');
+    const [loadingSwap, setLoadingSwap] = useState(false);
+
+    const connection = new Connection('https://mainnet.helius-rpc.com/?api-key=74354d81-106e-45b1-a611-0884434d6863');
 
     const getTokenBalance = (tokenAddress) => {
         const token = tokens.find((t) => t.address === tokenAddress);
@@ -28,7 +31,6 @@ function App() {
     useEffect(() => {
         if (publicKey) {
             setLoadingUserWalletTokens(true);
-            const connection = new Connection('https://mainnet.helius-rpc.com/?api-key=74354d81-106e-45b1-a611-0884434d6863');
 
             const fetchTokens = async () => {
                 try {
@@ -151,8 +153,7 @@ function App() {
         }
     }, [fromToken, swapAmount, fees]);
 
-    const handleSwap = () => {
-        console.log(`Swapping ${swapAmount} of ${fromToken} to ${toToken}`);
+    const handleSwap = async () => {
     };
 
     const filteredToTokens = availableTokens.filter(
@@ -210,7 +211,7 @@ function App() {
                             </div>
                         </div>
                     )}
-                    {error && <p style={{ color: 'red' }}>{error}</p>}
+                    {error && <p style={{color: 'red'}}>{error}</p>}
                     {fees && (
                         <div className="fees">
                             {/*TODO SUPPORT CASES WITH NO FEES FOUND*/}
@@ -223,12 +224,12 @@ function App() {
                     <button
                         className="swap-button"
                         onClick={handleSwap}
-                        disabled={!fromToken || !toToken || !swapAmount || fromToken === toToken || error}
+                        disabled={!fromToken || !toToken || !swapAmount || fromToken === toToken || error || loadingSwap}
                     >
-                        Swap
+                        {loadingSwap ? 'Processing...' : 'Swap'}
                     </button>
                     {fromToken === toToken && fromToken && (
-                        <p style={{ color: 'red' }}>From and To tokens cannot be the same.</p>
+                        <p style={{color: 'red'}}>From and To tokens cannot be the same.</p>
                     )}
                 </div>
             )}
