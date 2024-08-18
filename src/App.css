@@ -1,38 +1,75 @@
-.App {
-  text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+/* App.css */
+.container {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
+  height: 100vh;
+  text-align: center;
+}
+
+.trade-container {
+  margin-top: 20px;
+  width: 80%;
+}
+
+.trade-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.trade-item {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* Space between the input and select */
+}
+
+.amount-input {
+  width: 120px;
+  padding: 5px;
+  text-align: center;
+}
+
+.token-select {
+  width: 180px;
+  padding: 5px;
+}
+
+.arrow {
+  font-size: 24px;
+}
+
+.fees {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.fees-display {
+  padding: 5px 10px;
+  background-color: #f0f0f0;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #333;
+}
+
+.swap-button {
+  margin-top: 20px;
+  padding: 10px 20px;
+  background-color: #007bff;
   color: white;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
 }
 
-.App-link {
-  color: #61dafb;
-}
-
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.swap-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
 }
