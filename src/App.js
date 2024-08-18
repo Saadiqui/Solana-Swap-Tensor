@@ -206,22 +206,6 @@ function App() {
         }
     }, [fromToken, swapAmount, fees]);
 
-    // Function to get the associated token address for the selected mint
-    async function getTokenAccount(mint, walletPublicKey) {
-        if (!mint || !walletPublicKey) {
-            console.error("Mint or walletPublicKey is undefined:", { mint, walletPublicKey });
-            return;
-        }
-
-        return await getAssociatedTokenAddress(
-            mint,
-            walletPublicKey,
-            true, // This parameter specifies whether the account is owned by the wallet
-            TOKEN_2022_PROGRAM_ID,
-            ASSOCIATED_TOKEN_PROGRAM_ID
-        );
-    }
-
     // Function to fetch swap info from Jupiter
     async function fetchSwapInfo(inputMint, outputMint, amount) {
         const response = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=50`);
@@ -232,61 +216,6 @@ function App() {
             quoteResponse: data
         };
     }
-
-    // Function to fetch the swap transaction from Jupiter
-    async function fetchSwapTransaction(walletPublicKey, tokenAccount, swapInfo) {
-        const requestBody = {
-            userPublicKey: walletPublicKey.toBase58(),
-            wrapAndUnwrapSol: true,
-            useSharedAccounts: true,
-            feeAccount: walletPublicKey.toBase58(),
-            trackingAccount: walletPublicKey.toBase58(),
-            prioritizationFeeLamports: 0,  // No prioritization fee in this case
-            asLegacyTransaction: false,
-            useTokenLedger: false,
-            destinationTokenAccount: tokenAccount.toBase58(),
-            dynamicComputeUnitLimit: true,
-            skipUserAccountsRpcCalls: true,
-            quoteResponse: swapInfo.quoteResponse
-        };
-        console.log("fetch swap request:", { requestBody });
-
-        const response = await fetch('https://quote-api.jup.ag/v6/swap', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-        });
-
-        // console.log("response.json():", response.json())
-        const data = await response.json();
-        console.log('Raw response data:', data);
-
-        const swapTransaction = data.swapTransaction
-        const lastValidBlockHeight = data.lastValidBlockHeight
-        // const { swapTransaction, lastValidBlockHeight } = await response.json();
-        // console.log(`swapTransaction: ${swapTransaction}, lastValidBlockHeight: ${lastValidBlockHeight}`)
-        return { swapTransaction, lastValidBlockHeight };
-    }
-
-    // // Function to send the transaction using the wallet adapter
-    // async function sendTransaction(swapTransaction, wallet, connection, lastValidBlockHeight) {
-    //     const versionedMessage = VersionedMessage.deserialize(Buffer.from(swapTransaction, 'base64'));
-    //     const transaction = new VersionedTransaction(versionedMessage);
-    //
-    //     // Sign and send the transaction using the wallet adapter
-    //     const signature = await wallet.sendTransaction(transaction, connection);
-    //
-    //     // Confirm the transaction
-    //     await connection.confirmTransaction({
-    //         signature,
-    //         blockhash: transaction.recentBlockhash,
-    //         lastValidBlockHeight
-    //     }, "finalized");
-    //
-    //     console.log("Transaction confirmed:", signature);
-    // }
 
     const ensureAssociatedTokenAccountExists = async (mint, owner, connection) => {
         const associatedTokenAddress = await getAssociatedTokenAddress(
