@@ -9,7 +9,7 @@ require('@solana/wallet-adapter-react-ui/styles.css'); // Import default styles 
 
 const WalletConnectionProvider = ({ children }) => {
     // You can switch between 'mainnet-beta', 'testnet', and 'devnet' as needed.
-    const network = clusterApiUrl('devnet');
+    const network = clusterApiUrl('mainnet-beta');
 
     const wallets = useMemo(
         () => [

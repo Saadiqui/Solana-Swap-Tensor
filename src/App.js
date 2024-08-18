@@ -18,17 +18,24 @@ function App() {
     const [swapAmount, setSwapAmount] = useState('');
     const [expectedOutput, setExpectedOutput] = useState('');
     const [fees, setFees] = useState(null);
+    const [error, setError] = useState('');
+
+    const getTokenBalance = (tokenAddress) => {
+        const token = tokens.find((t) => t.address === tokenAddress);
+        return token ? token.balance : 0;
+    };
 
     useEffect(() => {
         if (publicKey) {
             setLoadingUserWalletTokens(true);
-            const connection = new Connection('https://api.devnet.solana.com');
+            const connection = new Connection('https://mainnet.helius-rpc.com/?api-key=74354d81-106e-45b1-a611-0884434d6863');
 
             const fetchTokens = async () => {
                 try {
                     const solBalance = await connection.getBalance(publicKey);
                     const formattedSolBalance = solBalance / LAMPORTS_PER_SOL;
 
+                    // TODO: UNSURE IF WE CAN FILTER OUT SPAM TOKENS SOMEHOW
                     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
                         publicKey,
                         { programId: TOKEN_PROGRAM_ID }
@@ -92,6 +99,7 @@ function App() {
                     const outputMint = toToken === 'SOL' ? SOL_MINT : toToken;
                     const inputAmount = fromToken === 'SOL' ? swapAmount * LAMPORTS_PER_SOL : swapAmount;
 
+                    // TODO: SUPPORT CASE WHERE AMOUNT TO SWAP IS TOO SMALL OR OTHERWISE CANNOT BE SUPPORTED
                     const response = await fetch(
                         `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${inputAmount}&slippageBps=50`
                     );
@@ -99,7 +107,7 @@ function App() {
                     const data = await response.json();
 
                     if (data) {
-                        const outAmount = (data.outAmount / LAMPORTS_PER_SOL).toFixed(6);
+                        const outAmount = (data.outAmount / LAMPORTS_PER_SOL).toFixed(9);
                         setExpectedOutput(outAmount);
 
                         if (data.routePlan && data.routePlan.length > 0) {
@@ -122,6 +130,26 @@ function App() {
 
         fetchSwapQuote();
     }, [fromToken, toToken, swapAmount]);
+
+    useEffect(() => {
+        // Validate the swap amount
+        const validateAmount = () => {
+            // TODO: VALIDATE THAT WE CAN AFFORD FEES WHEN SWAPPING THIS MUCH
+            setError('');
+            const balance = getTokenBalance(fromToken);
+            const totalRequired = parseFloat(swapAmount) + (fees ? fees.amount : 0);
+
+            if (parseFloat(swapAmount) > balance) {
+                setError('Insufficient balance for the swap.');
+            } else if (totalRequired > balance) {
+                setError('Not enough funds to cover the swap and fees.');
+            }
+        };
+
+        if (fromToken && swapAmount) {
+            validateAmount();
+        }
+    }, [fromToken, swapAmount, fees]);
 
     const handleSwap = () => {
         console.log(`Swapping ${swapAmount} of ${fromToken} to ${toToken}`);
@@ -182,6 +210,7 @@ function App() {
                             </div>
                         </div>
                     )}
+                    {error && <p style={{ color: 'red' }}>{error}</p>}
                     {fees && (
                         <div className="fees">
                             {/*TODO SUPPORT CASES WITH NO FEES FOUND*/}
@@ -194,7 +223,7 @@ function App() {
                     <button
                         className="swap-button"
                         onClick={handleSwap}
-                        disabled={!fromToken || !toToken || !swapAmount || fromToken === toToken}
+                        disabled={!fromToken || !toToken || !swapAmount || fromToken === toToken || error}
                     >
                         Swap
                     </button>
