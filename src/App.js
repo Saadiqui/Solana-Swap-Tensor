@@ -66,7 +66,6 @@ function App() {
                     const solBalance = await connection.getBalance(publicKey);
                     const formattedSolBalance = solBalance / LAMPORTS_PER_SOL;
 
-                    // TODO: UNSURE IF WE CAN FILTER OUT SPAM TOKENS SOMEHOW
                     const mainTokenProgramAccounts = await connection.getParsedTokenAccountsByOwner(
                         publicKey,
                         { programId: TOKEN_PROGRAM_ID }
@@ -89,6 +88,7 @@ function App() {
                     console.log("token2022ProgramAccounts: ", token2022ProgramAccounts)
                     const token2022ProgramUserTokens = await Promise.all(
                         token2022ProgramAccounts.value.map(async (tokenAccount) => {
+
                             const accountInfo = tokenAccount.account.data.parsed.info;
                             const tokenBalance = accountInfo.tokenAmount.uiAmount;
                             const tokenInfo = await getTokenInformation(accountInfo.mint);
@@ -104,8 +104,8 @@ function App() {
                     const combinedTokens = [
                         // TODO: CAN WE GET AWAY WITHOUT HARDCODING SOL?
                         { address: SOL_MINT, symbol: 'SOL', balance: formattedSolBalance },
-                        ...mainTokenProgramUserTokens,
-                        ...token2022ProgramUserTokens,
+                        ...mainTokenProgramUserTokens.filter(token => token.symbol !== "Unknown"),
+                        ...token2022ProgramUserTokens.filter(token => token.symbol !== "Unknown"),
                     ];
 
                     setTokens(combinedTokens);
