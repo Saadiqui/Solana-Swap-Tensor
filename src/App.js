@@ -105,10 +105,16 @@ function App() {
 
                     const data = await response.json();
 
-                    if (data && data.data && data.data[0]) {
-                        const quote = data.data[0];
-                        setExpectedOutput(quote.outAmount / LAMPORTS_PER_SOL); // Convert back to SOL or token unit
-                        setFees(quote.feeAmount / LAMPORTS_PER_SOL); // Estimate fees
+                    if (data) {
+                        const outAmount = data.outAmount / LAMPORTS_PER_SOL; // Convert back to SOL or token unit
+                        setExpectedOutput(outAmount);
+
+                        if (data.routePlan && data.routePlan.length > 0) {
+                            const quote = data.routePlan[0].swapInfo;
+                            const feeAmount = quote.feeAmount / LAMPORTS_PER_SOL; // Convert fees to SOL or token unit
+                            const feeMint = quote.feeMint;
+                            setFees({ amount: feeAmount, mint: feeMint });
+                        }
                     } else {
                         setExpectedOutput(null);
                         setFees(null);
@@ -181,7 +187,8 @@ function App() {
                             {expectedOutput && (
                                 <div>
                                     <p>Expected Output: {expectedOutput} {toToken === 'SOL' ? 'SOL' : 'tokens'}</p>
-                                    <p>Estimated Fees: {fees} SOL</p>
+                                     {/*TODO: Add robustness for when fee is not found*/}
+                                    <p>Estimated Fees: {fees?.amount?.toFixed(9)} {fees?.mint === SOL_MINT ? 'SOL' : 'tokens'}</p>
                                 </div>
                             )}
                             <button
