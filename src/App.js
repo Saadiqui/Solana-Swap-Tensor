@@ -3,22 +3,26 @@ import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { TokenListProvider, TokenInfo } from '@solana/spl-token-registry';
+import { TokenListProvider } from '@solana/spl-token-registry';
+
+const SOL_MINT = "So11111111111111111111111111111111111111112";
 
 function App() {
     const { publicKey } = useWallet();
     const [tokens, setTokens] = useState([]);
     const [availableTokens, setAvailableTokens] = useState([]); // All available tokens for the "To" field
-    const [loading, setLoading] = useState(false);
+    const [loadingUserWalletTokens, setLoadingUserWalletTokens] = useState(false);
+    const [loadingTradeableTokens, setLoadingTradeableTokens] = useState(false);
     const [fromToken, setFromToken] = useState('');
     const [toToken, setToToken] = useState('');
     const [swapAmount, setSwapAmount] = useState('');
     const [expectedOutput, setExpectedOutput] = useState(null);
     const [fees, setFees] = useState(null);
 
+    // load user wallet tokens
     useEffect(() => {
         if (publicKey) {
-            setLoading(true);
+            setLoadingUserWalletTokens(true);
             const connection = new Connection('https://api.devnet.solana.com');
 
             const fetchTokens = async () => {
@@ -49,9 +53,9 @@ function App() {
 
                     setTokens(combinedTokens);
                 } catch (error) {
-                    console.error('Error fetching tokens:', error);
+                    console.error('Error fetching user\'s tokens:', error);
                 } finally {
-                    setLoading(false);
+                    setLoadingUserWalletTokens(false);
                 }
             };
 
@@ -62,15 +66,63 @@ function App() {
     // Fetch the full list of tokens for the "To" field
     useEffect(() => {
         const fetchTokenList = async () => {
-            const tokenListProvider = new TokenListProvider();
-            const tokenList = await tokenListProvider.resolve();
-            const tokens = tokenList.filterByClusterSlug('devnet').getList(); // Adjust cluster as needed
+            try {
+                const cachedTokens = localStorage.getItem('tradableTokens');
+                if (cachedTokens) {
+                    setAvailableTokens(JSON.parse(cachedTokens));
+                    setLoadingTradeableTokens(false);
+                    return;
+                }
 
-            setAvailableTokens(tokens);
+                const response = await fetch('https://tokens.jup.ag/tokens?tags=community');
+                const data = await response.json();
+
+                // Cache the tokens locally
+                localStorage.setItem('tradableTokens', JSON.stringify(data));
+                setAvailableTokens(data);
+            } catch (error) {
+                console.error('Error fetching tradable tokens:', error);
+            } finally {
+                setLoadingTradeableTokens(false);
+            }
         };
 
         fetchTokenList();
     }, []);
+
+    // Fetch swap quote from Jupiter
+    useEffect(() => {
+        const fetchSwapQuote = async () => {
+            if (fromToken && toToken && swapAmount) {
+                try {
+                    const inputMint = fromToken === 'SOL' ? SOL_MINT : fromToken;
+                    const outputMint = toToken === 'SOL' ? SOL_MINT : toToken;
+                    const inputAmount = fromToken === 'SOL' ? swapAmount * LAMPORTS_PER_SOL : swapAmount;
+
+                    const response = await fetch(
+                        `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${inputAmount}&slippageBps=50`
+                    );
+
+                    const data = await response.json();
+
+                    if (data && data.data && data.data[0]) {
+                        const quote = data.data[0];
+                        setExpectedOutput(quote.outAmount / LAMPORTS_PER_SOL); // Convert back to SOL or token unit
+                        setFees(quote.feeAmount / LAMPORTS_PER_SOL); // Estimate fees
+                    } else {
+                        setExpectedOutput(null);
+                        setFees(null);
+                    }
+                } catch (error) {
+                    console.error('Error fetching swap quote:', error);
+                    setExpectedOutput(null);
+                    setFees(null);
+                }
+            }
+        };
+
+        fetchSwapQuote();
+    }, [fromToken, toToken, swapAmount]);
 
     const handleSwap = () => {
         console.log(`Swapping ${swapAmount} of ${fromToken} to ${toToken}`);
@@ -87,7 +139,7 @@ function App() {
             <WalletMultiButton />
             {publicKey && (
                 <div style={{ marginTop: '20px' }}>
-                    {loading ? (
+                    {loadingUserWalletTokens ? (
                         <p>Loading tokens...</p>
                     ) : (
                         <>
@@ -104,14 +156,18 @@ function App() {
                             </div>
                             <div>
                                 <label>To: </label>
-                                <select value={toToken} onChange={(e) => setToToken(e.target.value)}>
-                                    <option value="" disabled>Select a token</option>
-                                    {filteredToTokens.map((token, index) => (
-                                        <option key={index} value={token.address}>
-                                            {token.symbol} ({token.name})
-                                        </option>
-                                    ))}
-                                </select>
+                                {loadingTradeableTokens ? (
+                                    <p>Loading tradable tokens, this might take a few seconds...</p>
+                                ) : (
+                                    <select value={toToken} onChange={(e) => setToToken(e.target.value)}>
+                                        <option value="" disabled>Select a token</option>
+                                        {filteredToTokens.map((token, index) => (
+                                            <option key={index} value={token.address}>
+                                                {token.symbol} ({token.name})
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
                             </div>
                             <div>
                                 <label>Amount: </label>
