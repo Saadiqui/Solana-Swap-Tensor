@@ -24,6 +24,7 @@
     "react-scripts": "5.0.1",
     "stream-browserify": "^3.0.0",
     "stream-http": "^3.2.0",
+    "string.prototype.trim": "^1.2.9",
     "url": "^0.11.4",
     "web-vitals": "^2.1.0"
   },
@@ -50,5 +51,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "webpack": "^5.93.0"
   }
 }

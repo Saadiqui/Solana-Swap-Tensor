@@ -34,6 +34,43 @@ function App() {
         return token ? token.balance : 0;
     };
 
+    async function calculateAmountForToken(mintAccount, amount) {
+        const tokenInfo = await getTokenInformation(mintAccount)
+        const inputAmount = fromToken === SOL_MINT
+            ? amount * LAMPORTS_PER_SOL
+            : amount * Math.pow(10, tokenInfo.decimals);
+
+        console.log(`${fromToken} supports ${tokenInfo.decimals} decimals`)
+        console.log(`fromToken: ${fromToken}, toToken: ${toToken}, amount: ${amount}, inputAmount: ${inputAmount}`)
+        return inputAmount
+    }
+
+    async function convertUnitsToTokenAmount(mintAccount, units) {
+        const tokenInfo = await getTokenInformation(mintAccount)
+        const amount = fromToken === SOL_MINT
+            ? units / LAMPORTS_PER_SOL
+            : units / Math.pow(10, tokenInfo.decimals);
+
+        console.log(`${fromToken} supports ${tokenInfo.decimals} decimals`)
+        console.log(`fromToken: ${fromToken}, toToken: ${toToken}, units: ${units}, amount: ${amount}`)
+        return amount
+    }
+
+    async function determineTokenProgram(mintAddress) {
+        const mintAccountInfo = await connection.getParsedAccountInfo(new PublicKey(mintAddress));
+        const ownerProgramId = mintAccountInfo.value.owner.toBase58();
+
+        console.log(`owner id for ${mintAddress} is ${ownerProgramId}`)
+
+        if (ownerProgramId === "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb") {
+            return TOKEN_2022_PROGRAM_ID; // Token-2022 Program ID
+        } else if (ownerProgramId === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA") {
+            return TOKEN_PROGRAM_ID; // Standard SPL Token Program ID
+        } else {
+            throw new Error("Unknown token program ID");
+        }
+    }
+
     class TokenInfo {
         constructor(name, symbol, mintAddress, decimals) {
             this.name = name;
@@ -61,6 +98,7 @@ function App() {
         if (publicKey) {
             setLoadingUserWalletTokens(true);
 
+            // TODO: REFRESH THIS LIST AFTER A SWAP TO SHOW NEW TOKENS
             const fetchTokens = async () => {
                 try {
                     const solBalance = await connection.getBalance(publicKey);
@@ -71,24 +109,8 @@ function App() {
                         { programId: TOKEN_PROGRAM_ID }
                     );
 
-                    const mainTokenProgramUserTokens = mainTokenProgramAccounts.value.map((tokenAccount) => {
-                        const accountInfo = tokenAccount.account.data.parsed.info;
-                        const tokenAddress = accountInfo.mint;
-                        const tokenBalance = accountInfo.tokenAmount.uiAmount;
-                        const tokenSymbol = tokenAddress.symbol === undefined ? "Unknown" : tokenAddress.symbol
-
-                        return { address: tokenAddress, symbol: tokenSymbol, balance: tokenBalance };
-                    });
-
-                    const token2022ProgramAccounts = await connection.getParsedTokenAccountsByOwner(
-                        publicKey,
-                        { programId: TOKEN_2022_PROGRAM_ID }
-                    );
-
-                    console.log("token2022ProgramAccounts: ", token2022ProgramAccounts)
-                    const token2022ProgramUserTokens = await Promise.all(
-                        token2022ProgramAccounts.value.map(async (tokenAccount) => {
-
+                    const mainTokenProgramUserTokens = await Promise.all(
+                        mainTokenProgramAccounts.value.map(async (tokenAccount) => {
                             const accountInfo = tokenAccount.account.data.parsed.info;
                             const tokenBalance = accountInfo.tokenAmount.uiAmount;
                             const tokenInfo = await getTokenInformation(accountInfo.mint);
@@ -99,13 +121,32 @@ function App() {
                         })
                     );
 
-                    console.log(`This is token2022 after the mapping!!!!!!: ${JSON.stringify(token2022ProgramAccounts)}`)
+                    const token2022ProgramAccounts = await connection.getParsedTokenAccountsByOwner(
+                        publicKey,
+                        { programId: TOKEN_2022_PROGRAM_ID }
+                    );
+
+                    console.log("token2022ProgramAccounts: ", token2022ProgramAccounts)
+                    const token2022ProgramUserTokens = await Promise.all(
+                        token2022ProgramAccounts.value.map(async (tokenAccount) => {
+                            const accountInfo = tokenAccount.account.data.parsed.info;
+                            const tokenBalance = accountInfo.tokenAmount.uiAmount;
+                            const tokenInfo = await getTokenInformation(accountInfo.mint);
+                            console.log("tokenInfo", tokenInfo);
+                            console.log(`tokenInfo.mintAddress: ${tokenInfo.mintAddress}, tokenInfo.symbol: ${tokenInfo.symbol}, tokenBalance: ${tokenBalance}`);
+
+                            return { address: tokenInfo.mintAddress, symbol: tokenInfo.symbol, balance: tokenBalance };
+                        })
+                    );
+
+                    console.log(`This is token after the mapping!!!!!!: ${JSON.stringify(mainTokenProgramUserTokens)}`)
+                    console.log(`This is token2022 after the mapping!!!!!!: ${JSON.stringify(token2022ProgramUserTokens)}`)
 
                     const combinedTokens = [
                         // TODO: CAN WE GET AWAY WITHOUT HARDCODING SOL?
                         { address: SOL_MINT, symbol: 'SOL', balance: formattedSolBalance },
-                        ...mainTokenProgramUserTokens.filter(token => token.symbol !== "Unknown"),
-                        ...token2022ProgramUserTokens.filter(token => token.symbol !== "Unknown"),
+                        ...mainTokenProgramUserTokens.filter(token => token.symbol !== "UNK"),
+                        ...token2022ProgramUserTokens.filter(token => token.symbol !== "UNK"),
                     ];
 
                     setTokens(combinedTokens);
@@ -149,9 +190,7 @@ function App() {
         const fetchSwapQuote = async () => {
             if (fromToken && toToken && swapAmount) {
                 try {
-                    const inputAmount = fromToken === SOL_MINT ? swapAmount * LAMPORTS_PER_SOL : swapAmount;
-
-                    console.log(`fromToken: ${fromToken}, toToken: ${toToken}, swapAmount: ${swapAmount}, inputAmount: ${inputAmount}`)
+                    const inputAmount = await calculateAmountForToken(fromToken, swapAmount)
 
                     // TODO: SUPPORT CASE WHERE AMOUNT TO SWAP IS TOO SMALL OR OTHERWISE CANNOT BE SUPPORTED
                     // TODO: SUPPORT SHOWING THE TARGET AMOUNT IN THE DECIMALIZATION OF THE TARGET TOKEN. E.G. PYUSD ONLY SUPPORTS 6 PLACES
@@ -162,7 +201,7 @@ function App() {
                     const data = await response.json();
 
                     if (data) {
-                        const outAmount = (data.outAmount / LAMPORTS_PER_SOL).toFixed(9);
+                        const outAmount = await convertUnitsToTokenAmount(toToken, data.outAmount)
                         setExpectedOutput(outAmount);
 
                         if (data.routePlan && data.routePlan.length > 0) {
@@ -218,11 +257,12 @@ function App() {
     }
 
     const ensureAssociatedTokenAccountExists = async (mint, owner, connection) => {
+        const tokenProgramId = await determineTokenProgram(mint);
         const associatedTokenAddress = await getAssociatedTokenAddress(
             mint,
             owner,
             true, // Indicating this is a Token-2022 account (for wrap/unwrap SOL cases)
-            TOKEN_2022_PROGRAM_ID, // Use the Token-2022 program ID
+            tokenProgramId, // Use the Token-2022 program ID
             ASSOCIATED_TOKEN_PROGRAM_ID // The standard associated token program ID
         );
 
@@ -232,6 +272,7 @@ function App() {
         if (!accountInfo) {
             console.log("Need to create new associated token account as it doesn't exist");
             try {
+                const tokenProgramId = await determineTokenProgram(mint);
                 // Account doesn't exist, create it
                 const transaction = new Transaction().add(
                     createAssociatedTokenAccountInstruction(
@@ -240,7 +281,7 @@ function App() {
                         owner, // The owner of the account
                         mint, // The token mint
                         // TODO: SUPPORT BOTH REGULAR TOKEN PROGRAM AND TOKEN2022 PROGRAM ID HERE BASED ON TOKEN
-                        TOKEN_2022_PROGRAM_ID, // Token-2022 program ID
+                        tokenProgramId, // Token-2022 program ID
                         ASSOCIATED_TOKEN_PROGRAM_ID // Standard associated token program ID
                     )
                 );
@@ -284,7 +325,7 @@ function App() {
         inputMint = fromToken;
         // TODO: TEST WITH SOURCE TOKENS OTHER THAN SOL
         // TODO: TEST WITH TARGET TOKEN THAT IS SOL
-        amount = inputMint === SOL_MINT ? amount * LAMPORTS_PER_SOL : amount
+        amount = await calculateAmountForToken(inputMint, amount)
 
         console.log(`inputMint=${inputMint}, outputMint=${outputMint}, amount=${amount}`)
 
@@ -345,7 +386,7 @@ function App() {
             // Use sendTransaction from the wallet adapter
             const signature = await sendTransaction(transaction, connection);
 
-            console.log("transaction signed and broadcast")
+            console.log(`transaction ${signature} signed and broadcast`)
 
             // Confirm the transaction
             // Using 'finalized' commitment to ensure the transaction is fully confirmed
@@ -357,7 +398,9 @@ function App() {
             }, "finalized");
 
             if (confirmation.value.err) {
-                throw new Error(`Transaction not confirmed: ${confirmation.value.err.toString()}`);
+                const txDetails = await connection.getTransaction(signature, { commitment: "confirmed" });
+                console.error("Transaction logs:", txDetails.meta.logMessages);
+                throw new Error(`Transaction not confirmed: ${JSON.stringify(confirmation.value.err)}. Logs: ${txDetails.meta.logMessages.join("\n")}`);
             }
 
             console.log("Confirmed: ", signature);
