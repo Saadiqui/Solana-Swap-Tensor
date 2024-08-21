@@ -47,11 +47,11 @@ function App() {
 
     async function convertUnitsToTokenAmount(mintAccount, units) {
         const tokenInfo = await getTokenInformation(mintAccount)
-        const amount = fromToken === SOL_MINT
+        const amount = mintAccount === SOL_MINT
             ? units / LAMPORTS_PER_SOL
             : units / Math.pow(10, tokenInfo.decimals);
 
-        console.log(`${fromToken} supports ${tokenInfo.decimals} decimals`)
+        console.log(`${mintAccount} supports ${tokenInfo.decimals} decimals`)
         console.log(`fromToken: ${fromToken}, toToken: ${toToken}, units: ${units}, amount: ${amount}`)
         return amount
     }
@@ -203,6 +203,10 @@ function App() {
                         const outAmount = await convertUnitsToTokenAmount(toToken, data.outAmount)
                         setExpectedOutput(outAmount);
 
+                        if (data.error !== "") {
+                            console.error('Error fetching swap quote:', data.error);
+                            setError("Error: " + data.error)
+                        }
                         console.log("Data:", data)
                         if (data.routePlan && data.routePlan.length > 0) {
                             const quote = data.routePlan[0].swapInfo;
