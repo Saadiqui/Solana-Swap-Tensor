@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useCallback } from 'react';
 import {Connection, LAMPORTS_PER_SOL, PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js';
 import {
     ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -14,7 +14,7 @@ import './App.css'; // Custom styles for improved UX
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
 function App() {
-    const { publicKey, wallet, sendTransaction } = useWallet();
+    const { publicKey, sendTransaction } = useWallet();
     const [tokens, setTokens] = useState([]);
     const [availableTokens, setAvailableTokens] = useState([]);
     const [loadingUserWalletTokens, setLoadingUserWalletTokens] = useState(false);
@@ -94,69 +94,67 @@ function App() {
         }
     }
 
+    const fetchTokens = useCallback( async () => {
+        try {
+            setLoadingUserWalletTokens(true);
+            const solBalance = await connection.getBalance(publicKey);
+            const formattedSolBalance = solBalance / LAMPORTS_PER_SOL;
+
+            const mainTokenProgramAccounts = await connection.getParsedTokenAccountsByOwner(
+                publicKey,
+                { programId: TOKEN_PROGRAM_ID }
+            );
+
+            const mainTokenProgramUserTokens = await Promise.all(
+                mainTokenProgramAccounts.value.map(async (tokenAccount) => {
+                    const accountInfo = tokenAccount.account.data.parsed.info;
+                    const tokenBalance = accountInfo.tokenAmount.uiAmount;
+                    const tokenInfo = await getTokenInformation(accountInfo.mint);
+                    console.log("tokenInfo", tokenInfo);
+                    console.log(`tokenInfo.mintAddress: ${tokenInfo.mintAddress}, tokenInfo.symbol: ${tokenInfo.symbol}, tokenBalance: ${tokenBalance}`);
+
+                    return { address: tokenInfo.mintAddress, symbol: tokenInfo.symbol, balance: tokenBalance };
+                })
+            );
+
+            const token2022ProgramAccounts = await connection.getParsedTokenAccountsByOwner(
+                publicKey,
+                { programId: TOKEN_2022_PROGRAM_ID }
+            );
+
+            console.log("token2022ProgramAccounts: ", token2022ProgramAccounts)
+            const token2022ProgramUserTokens = await Promise.all(
+                token2022ProgramAccounts.value.map(async (tokenAccount) => {
+                    const accountInfo = tokenAccount.account.data.parsed.info;
+                    const tokenBalance = accountInfo.tokenAmount.uiAmount;
+                    const tokenInfo = await getTokenInformation(accountInfo.mint);
+                    console.log("tokenInfo", tokenInfo);
+                    console.log(`tokenInfo.mintAddress: ${tokenInfo.mintAddress}, tokenInfo.symbol: ${tokenInfo.symbol}, tokenBalance: ${tokenBalance}`);
+
+                    return { address: tokenInfo.mintAddress, symbol: tokenInfo.symbol, balance: tokenBalance };
+                })
+            );
+
+            console.log(`This is token after the mapping!!!!!!: ${JSON.stringify(mainTokenProgramUserTokens)}`)
+            console.log(`This is token2022 after the mapping!!!!!!: ${JSON.stringify(token2022ProgramUserTokens)}`)
+
+            const combinedTokens = [
+                // TODO: CAN WE GET AWAY WITHOUT HARDCODING SOL?
+                { address: SOL_MINT, symbol: 'SOL', balance: formattedSolBalance },
+                ...mainTokenProgramUserTokens.filter(token => token.symbol !== "UNK"),
+                ...token2022ProgramUserTokens.filter(token => token.symbol !== "UNK"),
+            ];
+
+            setTokens(combinedTokens);
+        } catch (error) {
+            console.error('Error fetching user\'s tokens:', error);
+        } finally {
+            setLoadingUserWalletTokens(false);
+        }
+    }, [publicKey]);
+
     useEffect(() => {
         if (publicKey) {
-            setLoadingUserWalletTokens(true);
-
-            // TODO: REFRESH THIS LIST AFTER A SWAP TO SHOW NEW TOKENS
-            const fetchTokens = async () => {
-                try {
-                    const solBalance = await connection.getBalance(publicKey);
-                    const formattedSolBalance = solBalance / LAMPORTS_PER_SOL;
-
-                    const mainTokenProgramAccounts = await connection.getParsedTokenAccountsByOwner(
-                        publicKey,
-                        { programId: TOKEN_PROGRAM_ID }
-                    );
-
-                    const mainTokenProgramUserTokens = await Promise.all(
-                        mainTokenProgramAccounts.value.map(async (tokenAccount) => {
-                            const accountInfo = tokenAccount.account.data.parsed.info;
-                            const tokenBalance = accountInfo.tokenAmount.uiAmount;
-                            const tokenInfo = await getTokenInformation(accountInfo.mint);
-                            console.log("tokenInfo", tokenInfo);
-                            console.log(`tokenInfo.mintAddress: ${tokenInfo.mintAddress}, tokenInfo.symbol: ${tokenInfo.symbol}, tokenBalance: ${tokenBalance}`);
-
-                            return { address: tokenInfo.mintAddress, symbol: tokenInfo.symbol, balance: tokenBalance };
-                        })
-                    );
-
-                    const token2022ProgramAccounts = await connection.getParsedTokenAccountsByOwner(
-                        publicKey,
-                        { programId: TOKEN_2022_PROGRAM_ID }
-                    );
-
-                    console.log("token2022ProgramAccounts: ", token2022ProgramAccounts)
-                    const token2022ProgramUserTokens = await Promise.all(
-                        token2022ProgramAccounts.value.map(async (tokenAccount) => {
-                            const accountInfo = tokenAccount.account.data.parsed.info;
-                            const tokenBalance = accountInfo.tokenAmount.uiAmount;
-                            const tokenInfo = await getTokenInformation(accountInfo.mint);
-                            console.log("tokenInfo", tokenInfo);
-                            console.log(`tokenInfo.mintAddress: ${tokenInfo.mintAddress}, tokenInfo.symbol: ${tokenInfo.symbol}, tokenBalance: ${tokenBalance}`);
-
-                            return { address: tokenInfo.mintAddress, symbol: tokenInfo.symbol, balance: tokenBalance };
-                        })
-                    );
-
-                    console.log(`This is token after the mapping!!!!!!: ${JSON.stringify(mainTokenProgramUserTokens)}`)
-                    console.log(`This is token2022 after the mapping!!!!!!: ${JSON.stringify(token2022ProgramUserTokens)}`)
-
-                    const combinedTokens = [
-                        // TODO: CAN WE GET AWAY WITHOUT HARDCODING SOL?
-                        { address: SOL_MINT, symbol: 'SOL', balance: formattedSolBalance },
-                        ...mainTokenProgramUserTokens.filter(token => token.symbol !== "UNK"),
-                        ...token2022ProgramUserTokens.filter(token => token.symbol !== "UNK"),
-                    ];
-
-                    setTokens(combinedTokens);
-                } catch (error) {
-                    console.error('Error fetching user\'s tokens:', error);
-                } finally {
-                    setLoadingUserWalletTokens(false);
-                }
-            };
-
             fetchTokens();
         }
     }, [publicKey]);
@@ -193,7 +191,8 @@ function App() {
                     const inputAmount = await calculateAmountForToken(fromToken, swapAmount)
 
                     // TODO: SUPPORT CASE WHERE AMOUNT TO SWAP IS TOO SMALL OR OTHERWISE CANNOT BE SUPPORTED
-                    // TODO: SUPPORT SHOWING THE TARGET AMOUNT IN THE DECIMALIZATION OF THE TARGET TOKEN. E.G. PYUSD ONLY SUPPORTS 6 PLACES
+                    // TODO: SHOW LOADING SCREEN WHILE CALCULATING
+                    // TODO: WAIT FOR USER TO STOP UPDATING THE INPUT TEXT BOX FOR HALF A SECOND BEFORE CALCULATING TO AVOID RE-CALCULATIONS WHILE TYPING
                     const response = await fetch(
                         `https://quote-api.jup.ag/v6/quote?inputMint=${fromToken}&outputMint=${toToken}&amount=${inputAmount}&slippageBps=50`
                     );
@@ -204,6 +203,7 @@ function App() {
                         const outAmount = await convertUnitsToTokenAmount(toToken, data.outAmount)
                         setExpectedOutput(outAmount);
 
+                        console.log("Data:", data)
                         if (data.routePlan && data.routePlan.length > 0) {
                             const quote = data.routePlan[0].swapInfo;
                             const feeAmount = quote.feeAmount / LAMPORTS_PER_SOL;
@@ -411,6 +411,7 @@ function App() {
             setError('Failed to complete the swap.');
         } finally {
             setLoadingSwap(false);
+            await fetchTokens();
         }
     };
 
