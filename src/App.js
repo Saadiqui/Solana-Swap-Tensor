@@ -19,6 +19,7 @@ function App() {
     const [availableTokens, setAvailableTokens] = useState([]);
     const [loadingUserWalletTokens, setLoadingUserWalletTokens] = useState(false);
     const [loadingTradeableTokens, setLoadingTradeableTokens] = useState(false);
+    const [loadingSwapQuote, setLoadingSwapQuote] = useState(false);
     const [fromToken, setFromToken] = useState('');
     const [toToken, setToToken] = useState('');
     const [swapAmount, setSwapAmount] = useState('');
@@ -188,10 +189,8 @@ function App() {
         const fetchSwapQuote = async () => {
             if (fromToken && toToken && swapAmount) {
                 try {
+                    setLoadingSwapQuote(true)
                     const inputAmount = await calculateAmountForToken(fromToken, swapAmount)
-
-                    // TODO: SUPPORT CASE WHERE AMOUNT TO SWAP IS TOO SMALL OR OTHERWISE CANNOT BE SUPPORTED
-                    // TODO: SHOW LOADING SCREEN WHILE CALCULATING
                     // TODO: WAIT FOR USER TO STOP UPDATING THE INPUT TEXT BOX FOR HALF A SECOND BEFORE CALCULATING TO AVOID RE-CALCULATIONS WHILE TYPING
                     const response = await fetch(
                         `https://quote-api.jup.ag/v6/quote?inputMint=${fromToken}&outputMint=${toToken}&amount=${inputAmount}&slippageBps=50`
@@ -213,6 +212,7 @@ function App() {
                             const feeAmount = quote.feeAmount / LAMPORTS_PER_SOL;
                             const feeMint = quote.feeMint;
                             setFees({ amount: feeAmount, mint: feeMint });
+                            setLoadingSwapQuote(false)
                         }
                     } else {
                         setExpectedOutput('');
@@ -284,7 +284,6 @@ function App() {
                         associatedTokenAddress, // The address of the associated token account
                         owner, // The owner of the account
                         mint, // The token mint
-                        // TODO: SUPPORT BOTH REGULAR TOKEN PROGRAM AND TOKEN2022 PROGRAM ID HERE BASED ON TOKEN
                         tokenProgramId, // Token-2022 program ID
                         ASSOCIATED_TOKEN_PROGRAM_ID // Standard associated token program ID
                     )
@@ -327,8 +326,6 @@ function App() {
         }
 
         inputMint = fromToken;
-        // TODO: TEST WITH SOURCE TOKENS OTHER THAN SOL
-        // TODO: TEST WITH TARGET TOKEN THAT IS SOL
         amount = await calculateAmountForToken(inputMint, amount)
 
         console.log(`inputMint=${inputMint}, outputMint=${outputMint}, amount=${amount}`)
@@ -454,7 +451,7 @@ function App() {
                             <div className="trade-item">
                                 <input
                                     type="text"
-                                    value={expectedOutput}
+                                    value={loadingSwapQuote ? "Fetching Quote..." : expectedOutput}
                                     readOnly
                                     placeholder="Target amount"
                                     className="amount-input"
@@ -486,7 +483,6 @@ function App() {
                     )}
                     <button
                         className="swap-button"
-                        // TODO: The input mint should be a token address, not just a token name (e.g. SOL)
                         onClick={() => handleSwap(fromToken, new PublicKey(toToken), swapAmount)} // Use an inline function to pass arguments
                         disabled={!fromToken || !toToken || !swapAmount || fromToken === toToken || error || loadingSwap}
                     >
