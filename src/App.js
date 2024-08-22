@@ -138,6 +138,7 @@ function App() {
     useEffect(() => {
         const fetchTokenList = async () => {
             try {
+                // we cache the token info list locally because it's a large list to fetch the first time
                 const cachedTokens = localStorage.getItem('tradableTokens');
                 if (cachedTokens) {
                     setAvailableTokens(JSON.parse(cachedTokens));
@@ -297,7 +298,6 @@ function App() {
 
             // Step 1: Fetch swap info from Jupiter
             const swapInfo = await fetchSwapInfo(inputMint, outputMint, amount);
-
             const quoteResponse = swapInfo.quoteResponse
 
             const { swapTransaction } = await (
