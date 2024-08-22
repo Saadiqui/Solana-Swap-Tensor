@@ -1,4 +1,4 @@
-import React, {useEffect, useState, useCallback } from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {Connection, LAMPORTS_PER_SOL, PublicKey, Transaction, VersionedTransaction} from '@solana/web3.js';
 import {
     ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -9,7 +9,7 @@ import {
 } from '@solana/spl-token';
 import {useWallet} from '@solana/wallet-adapter-react';
 import {WalletMultiButton} from '@solana/wallet-adapter-react-ui';
-import './App.css'; // Custom styles for improved UX
+import './App.css';
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -37,36 +37,26 @@ function App() {
 
     async function calculateAmountForToken(mintAccount, amount) {
         const tokenInfo = await getTokenInformation(mintAccount)
-        const inputAmount = fromToken === SOL_MINT
+        return fromToken === SOL_MINT
             ? amount * LAMPORTS_PER_SOL
-            : amount * Math.pow(10, tokenInfo.decimals);
-
-        console.log(`${fromToken} supports ${tokenInfo.decimals} decimals`)
-        console.log(`fromToken: ${fromToken}, toToken: ${toToken}, amount: ${amount}, inputAmount: ${inputAmount}`)
-        return inputAmount
+            : amount * Math.pow(10, tokenInfo.decimals)
     }
 
     async function convertUnitsToTokenAmount(mintAccount, units) {
         const tokenInfo = await getTokenInformation(mintAccount)
-        const amount = mintAccount === SOL_MINT
+        return mintAccount === SOL_MINT
             ? units / LAMPORTS_PER_SOL
-            : units / Math.pow(10, tokenInfo.decimals);
-
-        console.log(`${mintAccount} supports ${tokenInfo.decimals} decimals`)
-        console.log(`fromToken: ${fromToken}, toToken: ${toToken}, units: ${units}, amount: ${amount}`)
-        return amount
+            : units / Math.pow(10, tokenInfo.decimals)
     }
 
     async function determineTokenProgram(mintAddress) {
         const mintAccountInfo = await connection.getParsedAccountInfo(new PublicKey(mintAddress));
         const ownerProgramId = mintAccountInfo.value.owner.toBase58();
 
-        console.log(`owner id for ${mintAddress} is ${ownerProgramId}`)
-
         if (ownerProgramId === "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb") {
-            return TOKEN_2022_PROGRAM_ID; // Token-2022 Program ID
+            return TOKEN_2022_PROGRAM_ID;
         } else if (ownerProgramId === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA") {
-            return TOKEN_PROGRAM_ID; // Standard SPL Token Program ID
+            return TOKEN_PROGRAM_ID;
         } else {
             throw new Error("Unknown token program ID");
         }
@@ -82,9 +72,7 @@ function App() {
     }
 
     async function getTokenInformation(mintAccount) {
-        const response = await fetch(
-            `https://tokens.jup.ag/token/${mintAccount}`
-        );
+        const response = await fetch(`https://tokens.jup.ag/token/${mintAccount}`);
 
         const data = await response.json();
 
@@ -95,55 +83,42 @@ function App() {
         }
     }
 
+    async function fetchUserWalletTokens(publicKey, tokenProgramID) {
+        try {
+            const tokenProgramAccounts = await connection.getParsedTokenAccountsByOwner(
+                publicKey,
+                { programId: tokenProgramID }
+            );
+
+            const mainTokenProgramUserTokens = await Promise.all(
+                tokenProgramAccounts.value.map(async (tokenAccount) => {
+                    const accountInfo = tokenAccount.account.data.parsed.info;
+                    const tokenBalance = accountInfo.tokenAmount.uiAmount;
+                    const tokenInfo = await getTokenInformation(accountInfo.mint);
+
+                    return { address: tokenInfo.mintAddress, symbol: tokenInfo.symbol, balance: tokenBalance };
+                })
+            );
+
+            return mainTokenProgramUserTokens.filter(token => token.symbol !== "UNK")
+        } catch (error) {
+            console.error('Error fetching user\'s tokens:', error);
+        }
+    }
+
     const fetchTokens = useCallback( async () => {
         try {
             setLoadingUserWalletTokens(true);
             const solBalance = await connection.getBalance(publicKey);
             const formattedSolBalance = solBalance / LAMPORTS_PER_SOL;
 
-            const mainTokenProgramAccounts = await connection.getParsedTokenAccountsByOwner(
-                publicKey,
-                { programId: TOKEN_PROGRAM_ID }
-            );
-
-            const mainTokenProgramUserTokens = await Promise.all(
-                mainTokenProgramAccounts.value.map(async (tokenAccount) => {
-                    const accountInfo = tokenAccount.account.data.parsed.info;
-                    const tokenBalance = accountInfo.tokenAmount.uiAmount;
-                    const tokenInfo = await getTokenInformation(accountInfo.mint);
-                    console.log("tokenInfo", tokenInfo);
-                    console.log(`tokenInfo.mintAddress: ${tokenInfo.mintAddress}, tokenInfo.symbol: ${tokenInfo.symbol}, tokenBalance: ${tokenBalance}`);
-
-                    return { address: tokenInfo.mintAddress, symbol: tokenInfo.symbol, balance: tokenBalance };
-                })
-            );
-
-            const token2022ProgramAccounts = await connection.getParsedTokenAccountsByOwner(
-                publicKey,
-                { programId: TOKEN_2022_PROGRAM_ID }
-            );
-
-            console.log("token2022ProgramAccounts: ", token2022ProgramAccounts)
-            const token2022ProgramUserTokens = await Promise.all(
-                token2022ProgramAccounts.value.map(async (tokenAccount) => {
-                    const accountInfo = tokenAccount.account.data.parsed.info;
-                    const tokenBalance = accountInfo.tokenAmount.uiAmount;
-                    const tokenInfo = await getTokenInformation(accountInfo.mint);
-                    console.log("tokenInfo", tokenInfo);
-                    console.log(`tokenInfo.mintAddress: ${tokenInfo.mintAddress}, tokenInfo.symbol: ${tokenInfo.symbol}, tokenBalance: ${tokenBalance}`);
-
-                    return { address: tokenInfo.mintAddress, symbol: tokenInfo.symbol, balance: tokenBalance };
-                })
-            );
-
-            console.log(`This is token after the mapping!!!!!!: ${JSON.stringify(mainTokenProgramUserTokens)}`)
-            console.log(`This is token2022 after the mapping!!!!!!: ${JSON.stringify(token2022ProgramUserTokens)}`)
+            const mainTokenProgramUserTokens = await fetchUserWalletTokens(publicKey, TOKEN_PROGRAM_ID);
+            const token2022ProgramUserTokens = await fetchUserWalletTokens(publicKey, TOKEN_2022_PROGRAM_ID);
 
             const combinedTokens = [
-                // TODO: CAN WE GET AWAY WITHOUT HARDCODING SOL?
                 { address: SOL_MINT, symbol: 'SOL', balance: formattedSolBalance },
-                ...mainTokenProgramUserTokens.filter(token => token.symbol !== "UNK"),
-                ...token2022ProgramUserTokens.filter(token => token.symbol !== "UNK"),
+                ...mainTokenProgramUserTokens,
+                ...token2022ProgramUserTokens,
             ];
 
             setTokens(combinedTokens);
@@ -202,11 +177,11 @@ function App() {
                         const outAmount = await convertUnitsToTokenAmount(toToken, data.outAmount)
                         setExpectedOutput(outAmount);
 
-                        if (data.error !== "") {
+                        if (data.error !== undefined) {
                             console.error('Error fetching swap quote:', data.error);
                             setError("Error: " + data.error)
                         }
-                        console.log("Data:", data)
+
                         if (data.routePlan && data.routePlan.length > 0) {
                             const quote = data.routePlan[0].swapInfo;
                             const feeAmount = quote.feeAmount / LAMPORTS_PER_SOL;
@@ -230,9 +205,7 @@ function App() {
     }, [fromToken, toToken, swapAmount]);
 
     useEffect(() => {
-        // Validate the swap amount
         const validateAmount = () => {
-            // TODO: VALIDATE THAT WE CAN AFFORD FEES WHEN SWAPPING THIS MUCH
             setError('');
             const balance = getTokenBalance(fromToken);
             const totalRequired = parseFloat(swapAmount) + (fees ? fees.amount : 0);
@@ -265,31 +238,28 @@ function App() {
         const associatedTokenAddress = await getAssociatedTokenAddress(
             mint,
             owner,
-            true, // Indicating this is a Token-2022 account (for wrap/unwrap SOL cases)
-            tokenProgramId, // Use the Token-2022 program ID
-            ASSOCIATED_TOKEN_PROGRAM_ID // The standard associated token program ID
+            true,
+            tokenProgramId,
+            ASSOCIATED_TOKEN_PROGRAM_ID
         );
 
-        // Check if the account already exists
         const accountInfo = await connection.getAccountInfo(associatedTokenAddress);
 
+        // if associated token account doesn't already exist, we try to create one
         if (!accountInfo) {
-            console.log("Need to create new associated token account as it doesn't exist");
             try {
                 const tokenProgramId = await determineTokenProgram(mint);
-                // Account doesn't exist, create it
                 const transaction = new Transaction().add(
                     createAssociatedTokenAccountInstruction(
                         owner, // Payer (the wallet)
-                        associatedTokenAddress, // The address of the associated token account
-                        owner, // The owner of the account
-                        mint, // The token mint
-                        tokenProgramId, // Token-2022 program ID
-                        ASSOCIATED_TOKEN_PROGRAM_ID // Standard associated token program ID
+                        associatedTokenAddress,
+                        owner,
+                        mint,
+                        tokenProgramId,
+                        ASSOCIATED_TOKEN_PROGRAM_ID
                     )
                 );
 
-                // Set the fee payer
                 transaction.feePayer = owner;
                 transaction.recentBlockhash = await connection.getLatestBlockhash().lastValidBlockHeight
 
@@ -300,25 +270,19 @@ function App() {
                     throw new Error("Simulation failed. Cannot create associated token account.");
                 }
 
-                // Send the transaction to create the associated token account
                 const signature = await sendTransaction(transaction, connection);
 
-                // Confirm the transaction with higher commitment
                 await connection.confirmTransaction(signature, 'finalized');
 
-                console.log("Created associated token account:", associatedTokenAddress.toBase58());
             } catch (error) {
                 console.error("Failed to create associated token account:", error);
                 throw error;
             }
-        } else {
-            console.log("Associated token account already exists:", associatedTokenAddress.toBase58());
         }
 
         return associatedTokenAddress;
     };
 
-    // Function to handle the swap in your app
     const handleSwap = async (inputMint, outputMint, amount) => {
         if (!publicKey) {
             console.error("No wallet connected");
@@ -328,22 +292,13 @@ function App() {
         inputMint = fromToken;
         amount = await calculateAmountForToken(inputMint, amount)
 
-        console.log(`inputMint=${inputMint}, outputMint=${outputMint}, amount=${amount}`)
-
         try {
-            // Get the user's token account for the output mint
-            // Ensure the associated token account exists for the output token
-            const tokenAccount = await ensureAssociatedTokenAccountExists(outputMint, publicKey, connection);
-            console.log(`User token account for output: ${tokenAccount.toString()}`);
+            await ensureAssociatedTokenAccountExists(outputMint, publicKey, connection);
 
             // Step 1: Fetch swap info from Jupiter
             const swapInfo = await fetchSwapInfo(inputMint, outputMint, amount);
-            console.log("swapInfo", swapInfo)
 
             const quoteResponse = swapInfo.quoteResponse
-
-            console.log(`publicKey: ${publicKey}`)
-            console.log("quoteResponse:", quoteResponse)
 
             const { swapTransaction } = await (
                 await fetch('https://quote-api.jup.ag/v6/swap', {
@@ -354,12 +309,8 @@ function App() {
                     body: JSON.stringify({
                         // quoteResponse from /quote api
                         quoteResponse,
-                        // user public key to be used for the swap
                         userPublicKey: publicKey.toString(),
-                        // auto wrap and unwrap SOL. default is true
                         wrapAndUnwrapSol: true,
-                        // feeAccount is optional. Use if you want to charge a fee.  feeBps must have been passed in /quote API.
-                        // feeAccount: "fee_account_public_key"
                     })
                 })
             ).json();
@@ -368,13 +319,8 @@ function App() {
             var transaction = VersionedTransaction.deserialize(swapTransactionBuf);
             const latestBlockHash = await connection.getLatestBlockhash();
             transaction.recentBlockhash = latestBlockHash.blockhash;
-            transaction.feePayer = publicKey; // Set the fee payer to the connected wallet
+            transaction.feePayer = publicKey;
 
-            // Log the transaction details for debugging
-            console.log("Transaction Details:", transaction);
-
-
-            // TODO: CLEANUP SIMULATION
             // Simulate the transaction first to catch any issues
             const simulation = await connection.simulateTransaction(transaction);
             if (simulation.value.err) {
@@ -382,16 +328,11 @@ function App() {
                 return;
             }
 
-            console.log("transaction successfully simulated")
-
             // Use sendTransaction from the wallet adapter
             const signature = await sendTransaction(transaction, connection);
 
-            console.log(`transaction ${signature} signed and broadcast`)
-
             // Confirm the transaction
             // Using 'finalized' commitment to ensure the transaction is fully confirmed
-            // Reference: https://solana.com/docs/core/transactions#confirmation
             const confirmation = await connection.confirmTransaction({
                 signature,
                 blockhash: latestBlockHash.blockhash,
@@ -403,10 +344,6 @@ function App() {
                 console.error("Transaction logs:", txDetails.meta.logMessages);
                 throw new Error(`Transaction not confirmed: ${JSON.stringify(confirmation.value.err)}. Logs: ${txDetails.meta.logMessages.join("\n")}`);
             }
-
-            console.log("Confirmed: ", signature);
-
-            // console.log("Transaction confirmed:", signature);
         } catch (error) {
             console.error('Error performing swap:', error);
             setError('Failed to complete the swap.');
@@ -474,7 +411,6 @@ function App() {
                     {error && <p style={{color: 'red'}}>{error}</p>}
                     {fees && (
                         <div className="fees">
-                            {/*TODO SUPPORT CASES WITH NO FEES FOUND*/}
                             <label>Fees:</label>
                             <div className="fees-display">
                                 {fees.amount.toFixed(9)} {fees.mint === SOL_MINT ? 'SOL' : 'tokens'}
@@ -483,7 +419,7 @@ function App() {
                     )}
                     <button
                         className="swap-button"
-                        onClick={() => handleSwap(fromToken, new PublicKey(toToken), swapAmount)} // Use an inline function to pass arguments
+                        onClick={() => handleSwap(fromToken, new PublicKey(toToken), swapAmount)}
                         disabled={!fromToken || !toToken || !swapAmount || fromToken === toToken || error || loadingSwap}
                     >
                         {loadingSwap ? 'Processing...' : 'Swap'}
