@@ -30,11 +30,6 @@ function App() {
 
     const connection = new Connection('https://mainnet.helius-rpc.com/?api-key=74354d81-106e-45b1-a611-0884434d6863');
 
-    const getTokenBalance = (tokenAddress) => {
-        const token = tokens.find((t) => t.address === tokenAddress);
-        return token ? token.balance : 0;
-    };
-
     async function convertTokenAmountToUnits(mintAccount, amount) {
         const tokenInfo = await getTokenInformation(mintAccount)
         return fromToken === SOL_MINT
@@ -205,6 +200,11 @@ function App() {
         fetchSwapQuote();
     }, [fromToken, toToken, swapAmount]);
 
+    function getTokenBalance (tokenAddress) {
+        const token = tokens.find((t) => t.address === tokenAddress);
+        return token ? token.balance : 0;
+    }
+
     useEffect(() => {
         const validateAmount = () => {
             setError('');
@@ -234,7 +234,7 @@ function App() {
         };
     }
 
-    const ensureAssociatedTokenAccountExists = async (mint, owner, connection) => {
+    async function ensureAssociatedTokenAccountExists (mint, owner, connection) {
         const tokenProgramId = await determineTokenProgram(mint);
         const associatedTokenAddress = await getAssociatedTokenAddress(
             mint,
@@ -282,9 +282,9 @@ function App() {
         }
 
         return associatedTokenAddress;
-    };
+    }
 
-    const handleSwap = async (inputMint, outputMint, amount) => {
+    async function handleSwap(inputMint, outputMint, amount) {
         if (!publicKey) {
             console.error("No wallet connected");
             return;
@@ -351,11 +351,13 @@ function App() {
             setLoadingSwap(false);
             await fetchTokens();
         }
-    };
+    }
 
-    const filteredToTokens = availableTokens.filter(
-        (token) => token.address !== fromToken
-    );
+    function filteredToTokens() {
+        return availableTokens.filter(
+            (token) => token.address !== fromToken
+        );
+    }
 
     return (
         <div className="container">
@@ -398,7 +400,7 @@ function App() {
                                 ) : (
                                     <select value={toToken} onChange={(e) => setToToken(e.target.value)}>
                                         <option value="" disabled>Select a token</option>
-                                        {filteredToTokens.map((token, index) => (
+                                        {filteredToTokens().map((token, index) => (
                                             <option key={index} value={token.address}>
                                                 {token.symbol} ({token.name})
                                             </option>
