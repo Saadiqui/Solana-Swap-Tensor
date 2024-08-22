@@ -35,7 +35,7 @@ function App() {
         return token ? token.balance : 0;
     };
 
-    async function calculateAmountForToken(mintAccount, amount) {
+    async function convertTokenAmountToUnits(mintAccount, amount) {
         const tokenInfo = await getTokenInformation(mintAccount)
         return fromToken === SOL_MINT
             ? amount * LAMPORTS_PER_SOL
@@ -166,7 +166,7 @@ function App() {
             if (fromToken && toToken && swapAmount) {
                 try {
                     setLoadingSwapQuote(true)
-                    const inputAmount = await calculateAmountForToken(fromToken, swapAmount)
+                    const inputAmount = await convertTokenAmountToUnits(fromToken, swapAmount)
                     // TODO: WAIT FOR USER TO STOP UPDATING THE INPUT TEXT BOX FOR HALF A SECOND BEFORE CALCULATING TO AVOID RE-CALCULATIONS WHILE TYPING
                     const response = await fetch(
                         `https://quote-api.jup.ag/v6/quote?inputMint=${fromToken}&outputMint=${toToken}&amount=${inputAmount}&slippageBps=50`
@@ -291,7 +291,7 @@ function App() {
         }
 
         inputMint = fromToken;
-        amount = await calculateAmountForToken(inputMint, amount)
+        amount = await convertTokenAmountToUnits(inputMint, amount)
 
         try {
             await ensureAssociatedTokenAccountExists(outputMint, publicKey, connection);
