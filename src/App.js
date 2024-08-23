@@ -192,6 +192,8 @@ function App() {
                 lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
             }, "finalized");
 
+            alert(`Transaction ${signature} is confirmed!`)
+
             if (confirmation.value.err) {
                 const txDetails = await connection.getTransaction(signature, { commitment: "confirmed" });
                 console.error("Transaction logs:", txDetails.meta.logMessages);
