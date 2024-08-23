@@ -10,6 +10,7 @@ import {
 import {useWallet} from '@solana/wallet-adapter-react';
 import {WalletMultiButton} from '@solana/wallet-adapter-react-ui';
 import * as utils from './utils.js';
+import * as outboundCallsUtils from './outboundCallsUtils.js'
 import './App.css';
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -149,56 +150,6 @@ function App() {
         }
     }, [fromToken, swapAmount, fees]);
 
-    async function ensureAssociatedTokenAccountExists (mint, owner, connection) {
-        const tokenProgramId = await utils.DetermineTokenProgram(mint, connection);
-        const associatedTokenAddress = await getAssociatedTokenAddress(
-            mint,
-            owner,
-            true,
-            tokenProgramId,
-            ASSOCIATED_TOKEN_PROGRAM_ID
-        );
-
-        const accountInfo = await connection.getAccountInfo(associatedTokenAddress);
-
-        // if associated token account doesn't already exist, we try to create one
-        if (!accountInfo) {
-            try {
-                const tokenProgramId = await utils.DetermineTokenProgram(mint, connection);
-                const transaction = new Transaction().add(
-                    createAssociatedTokenAccountInstruction(
-                        owner, // Payer (the wallet)
-                        associatedTokenAddress,
-                        owner,
-                        mint,
-                        tokenProgramId,
-                        ASSOCIATED_TOKEN_PROGRAM_ID
-                    )
-                );
-
-                transaction.feePayer = owner;
-                transaction.recentBlockhash = await connection.getLatestBlockhash().lastValidBlockHeight
-
-                // Optional: Simulate the transaction first to catch any potential errors
-                const simulation = await connection.simulateTransaction(transaction);
-                if (simulation.value.err) {
-                    console.error("Simulation failed:", simulation.value.err);
-                    throw new Error("Simulation failed. Cannot create associated token account.");
-                }
-
-                const signature = await sendTransaction(transaction, connection);
-
-                await connection.confirmTransaction(signature, 'finalized');
-
-            } catch (error) {
-                console.error("Failed to create associated token account:", error);
-                throw error;
-            }
-        }
-
-        return associatedTokenAddress;
-    }
-
     async function handleSwap(inputMint, outputMint, amount) {
         if (!publicKey) {
             console.error("No wallet connected");
@@ -209,26 +160,13 @@ function App() {
         amount = await utils.ConvertTokenAmountToUnits(inputMint, amount)
 
         try {
-            await ensureAssociatedTokenAccountExists(outputMint, publicKey, connection);
+            await outboundCallsUtils.EnsureAssociatedTokenAccountExists(outputMint, publicKey, connection, sendTransaction);
 
             // Fetch swap info from Jupiter
-            const swapInfo = await utils.FetchSwapInfo(inputMint, outputMint, amount);
+            const swapInfo = await outboundCallsUtils.FetchSwapInfo(inputMint, outputMint, amount);
             const quoteResponse = swapInfo.quoteResponse
 
-            const { swapTransaction } = await (
-                await fetch('https://quote-api.jup.ag/v6/swap', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        // quoteResponse from /quote api
-                        quoteResponse,
-                        userPublicKey: publicKey.toString(),
-                        wrapAndUnwrapSol: true,
-                    })
-                })
-            ).json();
+            const swapTransaction = await outboundCallsUtils.fetchSwapTransaction(quoteResponse, publicKey)
 
             const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
             var transaction = VersionedTransaction.deserialize(swapTransactionBuf);

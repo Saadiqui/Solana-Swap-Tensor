@@ -6,33 +6,35 @@ import {
 import * as OutboundCallsUtils from './outboundCallsUtils.js'
 import { SOL_MINT } from './App.js';
 
-async function ConvertTokenAmountToUnits(mintAccount, amount) {
+export async function ConvertTokenAmountToUnits(mintAccount, amount) {
     const tokenInfo = await OutboundCallsUtils.getTokenInformation(mintAccount)
     return mintAccount === SOL_MINT
         ? amount * LAMPORTS_PER_SOL
         : amount * Math.pow(10, tokenInfo.decimals)
 }
 
-async function ConvertUnitsToTokenAmount(mintAccount, units) {
+export async function ConvertUnitsToTokenAmount(mintAccount, units) {
     const tokenInfo = await OutboundCallsUtils.getTokenInformation(mintAccount)
     return mintAccount === SOL_MINT
         ? units / LAMPORTS_PER_SOL
         : units / Math.pow(10, tokenInfo.decimals)
 }
 
-async function DetermineTokenProgram(mintAddress, connection) {
+export async function DetermineTokenProgram(mintAddress, connection) {
     const mintAccountInfo = await connection.getParsedAccountInfo(new PublicKey(mintAddress));
     const ownerProgramId = mintAccountInfo.value.owner.toBase58();
 
-    if (ownerProgramId !== TOKEN_2022_PROGRAM_ID.toBase58() &&
-        ownerProgramId !== TOKEN_PROGRAM_ID.toBase58()) {
-        throw new Error("Unknown token program ID");
+    switch (ownerProgramId) {
+        case TOKEN_2022_PROGRAM_ID.toBase58():
+            return TOKEN_2022_PROGRAM_ID
+        case TOKEN_PROGRAM_ID.toBase58():
+            return TOKEN_PROGRAM_ID
+        default:
+            throw new Error("Unknown token program ID");
     }
-
-    return ownerProgramId
 }
 
-async function FetchUserWalletTokens(publicKey, connection, tokenProgramID) {
+export async function FetchUserWalletTokens(publicKey, connection, tokenProgramID) {
     try {
         const tokenProgramAccounts = await connection.getParsedTokenAccountsByOwner(
             publicKey,
@@ -55,34 +57,13 @@ async function FetchUserWalletTokens(publicKey, connection, tokenProgramID) {
     }
 }
 
-function GetTokenBalance (tokens, tokenAddress) {
+export function GetTokenBalance (tokens, tokenAddress) {
     const token = tokens.find((t) => t.address === tokenAddress);
     return token ? token.balance : 0;
 }
 
-// Function to fetch swap info from Jupiter
-async function FetchSwapInfo(inputMint, outputMint, amount) {
-    const response = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=50`);
-    const data = await response.json();
-    return {
-        inAmount: data.inAmount,
-        otherAmountThreshold: data.otherAmountThreshold,
-        quoteResponse: data
-    };
-}
-
-function FilteredToTokens(availableTokens, fromToken) {
+export function FilteredToTokens(availableTokens, fromToken) {
     return availableTokens.filter(
         (token) => token.address !== fromToken
     );
 }
-
-export {
-    ConvertTokenAmountToUnits,
-    ConvertUnitsToTokenAmount,
-    DetermineTokenProgram,
-    FetchUserWalletTokens,
-    GetTokenBalance,
-    FetchSwapInfo,
-    FilteredToTokens,
-};
