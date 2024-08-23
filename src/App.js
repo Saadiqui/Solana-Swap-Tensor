@@ -9,9 +9,11 @@ import {
 } from '@solana/spl-token';
 import {useWallet} from '@solana/wallet-adapter-react';
 import {WalletMultiButton} from '@solana/wallet-adapter-react-ui';
+import * as utils from './utils.js';
 import './App.css';
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+const HELIUS_API_KEY = "74354d81-106e-45b1-a611-0884434d6863"
 
 function App() {
     const { publicKey, sendTransaction } = useWallet();
@@ -28,78 +30,7 @@ function App() {
     const [error, setError] = useState('');
     const [loadingSwap, setLoadingSwap] = useState(false);
 
-    const connection = new Connection('https://mainnet.helius-rpc.com/?api-key=74354d81-106e-45b1-a611-0884434d6863');
-
-    async function convertTokenAmountToUnits(mintAccount, amount) {
-        const tokenInfo = await getTokenInformation(mintAccount)
-        return fromToken === SOL_MINT
-            ? amount * LAMPORTS_PER_SOL
-            : amount * Math.pow(10, tokenInfo.decimals)
-    }
-
-    async function convertUnitsToTokenAmount(mintAccount, units) {
-        const tokenInfo = await getTokenInformation(mintAccount)
-        return mintAccount === SOL_MINT
-            ? units / LAMPORTS_PER_SOL
-            : units / Math.pow(10, tokenInfo.decimals)
-    }
-
-    async function determineTokenProgram(mintAddress) {
-        const mintAccountInfo = await connection.getParsedAccountInfo(new PublicKey(mintAddress));
-        const ownerProgramId = mintAccountInfo.value.owner.toBase58();
-
-        if (ownerProgramId === "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb") {
-            return TOKEN_2022_PROGRAM_ID;
-        } else if (ownerProgramId === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA") {
-            return TOKEN_PROGRAM_ID;
-        } else {
-            throw new Error("Unknown token program ID");
-        }
-    }
-
-    class TokenInfo {
-        constructor(name, symbol, mintAddress, decimals) {
-            this.name = name;
-            this.symbol = symbol;
-            this.mintAddress = mintAddress;
-            this.decimals = decimals;
-        }
-    }
-
-    async function getTokenInformation(mintAccount) {
-        const response = await fetch(`https://tokens.jup.ag/token/${mintAccount}`);
-
-        const data = await response.json();
-
-        if (data) {
-            return new TokenInfo(data.name, data.symbol, data.address, data.decimals)
-        } else {
-            return new TokenInfo("Unknown", "UNK", "", 9)
-        }
-    }
-
-    async function fetchUserWalletTokens(publicKey, tokenProgramID) {
-        try {
-            const tokenProgramAccounts = await connection.getParsedTokenAccountsByOwner(
-                publicKey,
-                { programId: tokenProgramID }
-            );
-
-            const mainTokenProgramUserTokens = await Promise.all(
-                tokenProgramAccounts.value.map(async (tokenAccount) => {
-                    const accountInfo = tokenAccount.account.data.parsed.info;
-                    const tokenBalance = accountInfo.tokenAmount.uiAmount;
-                    const tokenInfo = await getTokenInformation(accountInfo.mint);
-
-                    return { address: tokenInfo.mintAddress, symbol: tokenInfo.symbol, balance: tokenBalance };
-                })
-            );
-
-            return mainTokenProgramUserTokens.filter(token => token.symbol !== "UNK")
-        } catch (error) {
-            console.error('Error fetching user\'s tokens:', error);
-        }
-    }
+    const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`);
 
     const fetchTokens = useCallback( async () => {
         try {
@@ -107,8 +38,8 @@ function App() {
             const solBalance = await connection.getBalance(publicKey);
             const formattedSolBalance = solBalance / LAMPORTS_PER_SOL;
 
-            const mainTokenProgramUserTokens = await fetchUserWalletTokens(publicKey, TOKEN_PROGRAM_ID);
-            const token2022ProgramUserTokens = await fetchUserWalletTokens(publicKey, TOKEN_2022_PROGRAM_ID);
+            const mainTokenProgramUserTokens = await utils.FetchUserWalletTokens(publicKey, connection, TOKEN_PROGRAM_ID);
+            const token2022ProgramUserTokens = await utils.FetchUserWalletTokens(publicKey, connection, TOKEN_2022_PROGRAM_ID);
 
             const combinedTokens = [
                 { address: SOL_MINT, symbol: 'SOL', balance: formattedSolBalance },
@@ -161,7 +92,7 @@ function App() {
             if (fromToken && toToken && swapAmount) {
                 try {
                     setLoadingSwapQuote(true)
-                    const inputAmount = await convertTokenAmountToUnits(fromToken, swapAmount)
+                    const inputAmount = await utils.ConvertTokenAmountToUnits(fromToken, swapAmount)
                     // TODO: WAIT FOR USER TO STOP UPDATING THE INPUT TEXT BOX FOR HALF A SECOND BEFORE CALCULATING TO AVOID RE-CALCULATIONS WHILE TYPING
                     const response = await fetch(
                         `https://quote-api.jup.ag/v6/quote?inputMint=${fromToken}&outputMint=${toToken}&amount=${inputAmount}&slippageBps=50`
@@ -170,7 +101,7 @@ function App() {
                     const data = await response.json();
 
                     if (data) {
-                        const outAmount = await convertUnitsToTokenAmount(toToken, data.outAmount)
+                        const outAmount = await utils.ConvertUnitsToTokenAmount(toToken, data.outAmount)
                         setExpectedOutput(outAmount);
 
                         if (data.error !== undefined) {
@@ -200,15 +131,10 @@ function App() {
         fetchSwapQuote();
     }, [fromToken, toToken, swapAmount]);
 
-    function getTokenBalance (tokenAddress) {
-        const token = tokens.find((t) => t.address === tokenAddress);
-        return token ? token.balance : 0;
-    }
-
     useEffect(() => {
         const validateAmount = () => {
             setError('');
-            const balance = getTokenBalance(fromToken);
+            const balance = utils.GetTokenBalance(tokens, fromToken);
             const totalRequired = parseFloat(swapAmount) + (fees ? fees.amount : 0);
 
             if (parseFloat(swapAmount) > balance) {
@@ -223,19 +149,8 @@ function App() {
         }
     }, [fromToken, swapAmount, fees]);
 
-    // Function to fetch swap info from Jupiter
-    async function fetchSwapInfo(inputMint, outputMint, amount) {
-        const response = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=50`);
-        const data = await response.json();
-        return {
-            inAmount: data.inAmount,
-            otherAmountThreshold: data.otherAmountThreshold,
-            quoteResponse: data
-        };
-    }
-
     async function ensureAssociatedTokenAccountExists (mint, owner, connection) {
-        const tokenProgramId = await determineTokenProgram(mint);
+        const tokenProgramId = await utils.DetermineTokenProgram(mint, connection);
         const associatedTokenAddress = await getAssociatedTokenAddress(
             mint,
             owner,
@@ -249,7 +164,7 @@ function App() {
         // if associated token account doesn't already exist, we try to create one
         if (!accountInfo) {
             try {
-                const tokenProgramId = await determineTokenProgram(mint);
+                const tokenProgramId = await utils.DetermineTokenProgram(mint, connection);
                 const transaction = new Transaction().add(
                     createAssociatedTokenAccountInstruction(
                         owner, // Payer (the wallet)
@@ -291,13 +206,13 @@ function App() {
         }
 
         inputMint = fromToken;
-        amount = await convertTokenAmountToUnits(inputMint, amount)
+        amount = await utils.ConvertTokenAmountToUnits(inputMint, amount)
 
         try {
             await ensureAssociatedTokenAccountExists(outputMint, publicKey, connection);
 
-            // Step 1: Fetch swap info from Jupiter
-            const swapInfo = await fetchSwapInfo(inputMint, outputMint, amount);
+            // Fetch swap info from Jupiter
+            const swapInfo = await utils.FetchSwapInfo(inputMint, outputMint, amount);
             const quoteResponse = swapInfo.quoteResponse
 
             const { swapTransaction } = await (
@@ -353,12 +268,6 @@ function App() {
         }
     }
 
-    function filteredToTokens() {
-        return availableTokens.filter(
-            (token) => token.address !== fromToken
-        );
-    }
-
     return (
         <div className="container">
             <h1>Solana Swap</h1>
@@ -400,7 +309,7 @@ function App() {
                                 ) : (
                                     <select value={toToken} onChange={(e) => setToToken(e.target.value)}>
                                         <option value="" disabled>Select a token</option>
-                                        {filteredToTokens().map((token, index) => (
+                                        {utils.FilteredToTokens(availableTokens, fromToken).map((token, index) => (
                                             <option key={index} value={token.address}>
                                                 {token.symbol} ({token.name})
                                             </option>
@@ -435,4 +344,4 @@ function App() {
     );
 }
 
-export default App;
+export { App as default, SOL_MINT };
